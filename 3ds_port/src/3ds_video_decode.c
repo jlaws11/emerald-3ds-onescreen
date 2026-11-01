@@ -17,6 +17,49 @@ uint32_t CtrVideo_Texel(unsigned x, unsigned y, unsigned width)
     return ((y / 8) * (width / 8) + x / 8) * 64 + morton;
 }
 
+void CtrVideo_ScreenToTexels(uint16_t *texels, unsigned texWidth, const uint16_t *screen,
+                             unsigned width, unsigned height)
+{
+    /* An 8x8 tile's texel of each pixel, the tile's columns walked down. */
+    static uint8_t tileTexel[64];
+    static bool made;
+
+    if (!made)
+    {
+        for (unsigned i = 0; i < 64; ++i)
+            tileTexel[i] = (uint8_t)CtrVideo_Texel(i & 7, i / 8, 8);
+        made = true;
+    }
+    for (unsigned ty = 0; ty + 8 <= height; ty += 8)
+        for (unsigned tx = 0; tx + 8 <= width; tx += 8)
+        {
+            uint16_t *tile = texels + ((ty / 8) * (texWidth / 8) + tx / 8) * 64;
+
+            for (unsigned x = 0; x < 8; ++x)
+            {
+                /* The column's pixel at row ty; the rows below are before it. */
+                const uint16_t *column = screen + (tx + x) * height + (height - 1 - ty);
+
+                for (unsigned y = 0; y < 8; ++y)
+                    tile[tileTexel[y * 8 + x]] = *(column - y);
+            }
+        }
+}
+
+unsigned CtrVideo_BandSecondBox(const uint16_t *entries, unsigned count, unsigned capColumns)
+{
+    uint16_t last;
+
+    if (count < 4 || !entries[0] || !entries[2]) return 0;
+    last = entries[2];
+    for (unsigned column = 3; column + capColumns < count; ++column)
+    {
+        if (entries[column] != last) return column;
+        last = entries[column];
+    }
+    return 0;
+}
+
 uint32_t CtrVideo_RGBA8(uint16_t color, bool opaque)
 {
     unsigned r = color & 31, g = (color >> 5) & 31, b = (color >> 10) & 31;

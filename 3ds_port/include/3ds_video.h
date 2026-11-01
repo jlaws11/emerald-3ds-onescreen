@@ -105,6 +105,10 @@ void CtrVideo_Present(void);
 /* Keep showing the last top-screen frame instead of the game's screen. */
 void CtrVideo_HoldTop(bool hold);
 bool CtrVideo_TopHeld(void);
+/* Single screen (OPTIONS' SINGLE SCREEN): this frame the top screen shows
+ * the bottom screen's picture, over the game's darkened, for a player who
+ * sees the top screen alone. 3ds_bottom_ui.c asks every frame. */
+void CtrVideo_SetMirror(bool on);
 /* OAM entries belonging to field weather, tagged while BuildOamBuffer sorts sprites. */
 /*
  * The true y of the sprite that wrote OAM entries [first, end). OAM keeps 8
@@ -346,6 +350,23 @@ const CtrVideoStats *CtrVideo_GetStats(void);
 /* Pure, SDK-free address/format helpers, also used by host regression tests. */
 uint32_t CtrVideo_TextMapOffset(unsigned x, unsigned y, unsigned size);
 uint32_t CtrVideo_Texel(unsigned x, unsigned y, unsigned width);
+/*
+ * A screen's picture as it is in its framebuffer (RGB565, column after
+ * column, each column bottom to top: pixel (x, y) at x * height + height - 1
+ * - y) into the texels of a texture texWidth wide, (x, y) where
+ * CtrVideo_Texel puts it. width and height are whole tiles (multiples of 8).
+ * Single screen's copy of the bottom screen on the top one (3ds_video.c).
+ */
+void CtrVideo_ScreenToTexels(uint16_t *texels, unsigned texWidth, const uint16_t *screen,
+                             unsigned width, unsigned height);
+/*
+ * The battle text box band's top row (count tilemap entries from the left
+ * cap): the column the second of two boxes side by side starts at, the
+ * first change after the first box's middle has begun (column 3 on), or 0
+ * when the row is one box up to its right cap (capColumns from the end).
+ * 3ds_video.c's BattleBandRight lays the game's menu pages out by it.
+ */
+unsigned CtrVideo_BandSecondBox(const uint16_t *entries, unsigned count, unsigned capColumns);
 uint32_t CtrVideo_RGBA8(uint16_t color, bool opaque);
 uint16_t CtrVideo_RGBA5551(uint16_t color);
 unsigned CtrVideo_ObjTile(unsigned base, unsigned x, unsigned y,

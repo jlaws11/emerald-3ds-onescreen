@@ -3656,6 +3656,42 @@ static bool DrawBattleTextHd(unsigned bg)
     return true;
 }
 
+/*
+ * How much of the box band stays whole at the screen's right edge, in pixels.
+ * The message box's page is one box: its right cap (BATTLE_BAND_CAP). The
+ * game's menu pages are two boxes side by side (battle_bg.c's windows,
+ * textbox_map.bin): the prompt and the action menu (BG0 at 160), the moves
+ * and their PP and type (BG0 at 320). There the second box goes whole to the
+ * right edge, with the first one's right edge if it has one, and it is the
+ * first box that is stretched: stretching from the right cap alone carried
+ * the first box's middle through the menu, which came apart. Where the
+ * second box starts is read from the band's top row, a frame row on every
+ * page: the first change after the first box's middle has begun (column 3
+ * on). The message box's first change is its right cap, so nothing moves
+ * there.
+ */
+static int BattleBandRight(unsigned map, unsigned size, unsigned first, unsigned scrollY)
+{
+    unsigned rows = (size & 2) ? 64 : 32;
+    unsigned row = ((BATTLE_BAND_TOP + scrollY) >> 3) & (rows - 1);
+    uint16_t top[240 / 8];
+    unsigned second;
+
+    for (unsigned column = 0; column < 240 / 8; ++column)
+        top[column] = (uint16_t)MapEntry(map, size, first + column, row);
+    second = CtrVideo_BandSecondBox(top, 240 / 8, BATTLE_BAND_CAP / 8);
+    return second ? (int)(240 / 8 - second) * 8 : BATTLE_BAND_CAP;
+}
+
+/* SINGLE SCREEN on (3ds_extras.c): the game's own action and move menus are
+ * on the top screen (CtrBattleMenu_Active), on pages of the GBA's box. The
+ * HD box has no art for those pages: the GBA's box is drawn throughout, so
+ * the box keeps one look and one place from the messages to the menus. */
+static bool BattleOwnMenus(void)
+{
+    return CtrSettings_GetInt("single_screen", 0) == 1;
+}
+
 static void DrawBattleText(unsigned bg)
 {
     unsigned control = Reg(8 + bg * 2), size = control >> 14;
@@ -3667,10 +3703,11 @@ static void DrawBattleText(unsigned bg)
     /* The column under the left edge of the picture: the left cap. */
     unsigned first = scrollX >> 3;
     int ox = (int)(scrollX & 7), oy = (int)(scrollY & 7);
-    int fill0 = 240 - BATTLE_BAND_CAP + VIEW_LEFT, fill1 = VIEW_RIGHT - BATTLE_BAND_CAP;
+    int right = BattleBandRight(map, size, first, scrollY);
+    int fill0 = 240 - right + VIEW_LEFT, fill1 = VIEW_RIGHT - right;
     int x0 = fill0, x1 = fill1, y0 = BATTLE_BAND_TOP, y1 = 160;
 
-    if (DrawBattleTextHd(bg)) return;
+    if (!BattleOwnMenus() && DrawBattleTextHd(bg)) return;
     /* Above the text box: windows, where the game put them. */
     uint32_t before = sStats.tiles;
     DrawBattleCut(bg, 0, 240, 0, BATTLE_BAND_TOP, 0);
@@ -8463,6 +8500,146 @@ int CtrVideo_BottomPictureY(int y)
     return y >= 0 && y < 160 ? y : -1;
 }
 
+/*
+ * Single screen (OPTIONS' SINGLE SCREEN, 3ds_extras.c): for a player who sees
+ * only the top screen - an emulator showing one screen, a handheld PC - the
+ * bottom screen's picture is drawn on the top one while the player is down
+ * there: its buttons have the X focus, a game screen is open there, or a
+ * battle asks for a choice (3ds_bottom_ui.c, MirrorWanted, asks every frame).
+ * It is the bottom screen as it is, 1:1 in the middle of the 400 columns, the
+ * game's picture darkened in the 40 at each side; the buttons go where they
+ * would with the bottom screen in view, so nothing else changes.
+ *
+ * The picture is read back from the bottom screen's framebuffer, whatever
+ * drew it: the canvas 3ds_bottom_ui.c copies there and the game screen
+ * composed into its window (BottomTransfer). Read inside the frame, after
+ * FrameBegin has waited for the last one's GPU work and before this one's
+ * transfer is queued: the last frame's picture, whole. A copy of it is
+ * tiled by the CPU into a texture in linear memory (the CPU never writes
+ * VRAM, see ARCHITECTURE.md), 320x240 in a 512x256 one, made when single
+ * screen first shows and given back a few seconds after it last did. The
+ * copy is made again only when the picture can have changed: the canvas
+ * copied to the screen since (CtrBottom_BlitCount), or a game screen in the
+ * window this frame or the last.
+ *
+ * The top screen is not drawn while it is held or a game screen is down
+ * there (the frame it kept stays): the picture goes over that frame then,
+ * darkened once, the first frame it shows; and once on show it stays until
+ * the top screen is drawn again, so a held frame never shows a stale copy.
+ * Flat: the 3D slider is ignored while it shows.
+ */
+#define MIRROR_TEX_W 512
+#define MIRROR_TEX_H 256
+static C3D_Tex sMirrorTex;
+static bool sMirrorRequested, sMirrorShown, sMirrorFailed, sMirrorFresh, sMirrorWindowLast;
+static uint32_t sMirrorUsed, sMirrorFailFrame, sMirrorBlits;
+
+void CtrVideo_SetMirror(bool on) { sMirrorRequested = on; }
+
+static void MirrorRelease(void)
+{
+    if (sMirrorTex.data) C3D_TexDelete(&sMirrorTex);
+    memset(&sMirrorTex, 0, sizeof(sMirrorTex));
+    sMirrorFresh = false;
+}
+
+/* Outside the frame: whether the copy can be shown this frame. */
+static bool MirrorReady(bool wanted)
+{
+    if (!wanted)
+    {
+        if (sMirrorTex.data && sStats.frames - sMirrorUsed > LAYER_IDLE_FRAMES)
+        {
+            MirrorRelease();
+            CtrLog_Write(CTR_LOG_VIDEO, "single screen: copy of the bottom screen released (linear free=%lu)",
+                         (unsigned long)linearSpaceFree());
+        }
+        return false;
+    }
+    sMirrorUsed = sStats.frames;
+    if (sMirrorTex.data) return true;
+    if (sMirrorFailed && sStats.frames - sMirrorFailFrame < LAYER_RETRY_FRAMES) return false;
+    if (!C3D_TexInit(&sMirrorTex, MIRROR_TEX_W, MIRROR_TEX_H, GPU_RGB565))
+    {
+        memset(&sMirrorTex, 0, sizeof(sMirrorTex));
+        if (!sMirrorFailed)
+            CtrLog_Write(CTR_LOG_ERROR, "video: no memory for single screen's copy of the bottom screen "
+                         "(linear free=%lu); the bottom screen stays where it is", (unsigned long)linearSpaceFree());
+        sMirrorFailed = true;
+        sMirrorFailFrame = sStats.frames;
+        return false;
+    }
+    sMirrorFailed = false;
+    sMirrorFresh = false;
+    C3D_TexSetFilter(&sMirrorTex, GPU_NEAREST, GPU_NEAREST);
+    C3D_TexSetWrap(&sMirrorTex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+    CtrLog_Write(CTR_LOG_VIDEO, "single screen: copy of the bottom screen ready (linear free=%lu)",
+                 (unsigned long)linearSpaceFree());
+    return true;
+}
+
+/* Inside the frame, before BottomTransfer. */
+static void MirrorUpload(void)
+{
+    const u16 *fb = (const u16 *)gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    uint32_t blits = CtrBottom_BlitCount();
+    bool window = sBottomInUse || sMirrorWindowLast;
+
+    sMirrorWindowLast = sBottomInUse;
+    if (!sMirrorTex.data || !fb || gfxGetScreenFormat(GFX_BOTTOM) != GSP_RGB565_OES) return;
+    if (sMirrorFresh && blits == sMirrorBlits && !window) return;
+    /* The window's part was written by the GPU: read from memory, not from
+     * lines the data cache kept from the last copy. Cleaned and invalidated
+     * (the kernel's call, as FlushDirect): nothing the CPU wrote is lost,
+     * though 3ds_bottom_screen.c flushed its copies already. */
+    if (R_FAILED(svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)fb, BOTTOM_WIDTH * BOTTOM_SIZE * sizeof(u16))))
+        GSPGPU_InvalidateDataCache(fb, BOTTOM_WIDTH * BOTTOM_SIZE * sizeof(u16));
+    CtrVideo_ScreenToTexels(sMirrorTex.data, MIRROR_TEX_W, fb, BOTTOM_WIDTH, BOTTOM_SIZE);
+    C3D_TexFlush(&sMirrorTex);
+    sMirrorBlits = blits;
+    sMirrorFresh = true;
+}
+
+/* The copy over a top screen's target; darken: the game's picture behind it
+ * too, which a frame drawn this frame needs and a kept one already has. */
+static void MirrorDraw(C3D_RenderTarget *target, bool darken)
+{
+    const Tex3DS_SubTexture picture = {BOTTOM_WIDTH, BOTTOM_SIZE, 0.0f, 1.0f,
+        BOTTOM_WIDTH / (float)MIRROR_TEX_W, 1.0f - BOTTOM_SIZE / (float)MIRROR_TEX_H};
+    const float x = (CTR_GAME_WIDTH - BOTTOM_WIDTH) / 2.0f;
+
+    if (!target || !sMirrorFresh) return;
+    C2D_Prepare();
+    C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+    BlendForget();
+    SceneOn(target);
+    C2D_ViewReset();
+    Blend(5, false, false);
+    if (darken)
+        C2D_DrawRectSolid(0, 0, 0, CTR_GAME_WIDTH, CTR_GAME_HEIGHT, C2D_Color32(0, 0, 0, 176));
+    /* A line of shadow at each side, so the picture's edge reads as one. */
+    C2D_DrawRectSolid(x - 2, 0, 0, 2, CTR_GAME_HEIGHT, C2D_Color32(0, 0, 0, 255));
+    C2D_DrawRectSolid(x + BOTTOM_WIDTH, 0, 0, 2, CTR_GAME_HEIGHT, C2D_Color32(0, 0, 0, 255));
+    C2D_DrawImageAt((C2D_Image){&sMirrorTex, &picture}, x, 0, 0, NULL, 1, 1);
+    C2D_Flush();
+    BlendForget();
+}
+
+/* A frame with only the copy, over the top screen the game is not drawing;
+ * false if no frame could be begun. */
+static bool MirrorFrame(void)
+{
+    if (!C3D_FrameBegin(C3D_FRAME_SYNCDRAW)) return false;
+    TexCacheClear();
+    if (sStereo) { gfxSet3D(false); sStereo = false; }
+    MirrorUpload();
+    MirrorDraw(sTop, !sMirrorShown);
+    C3D_FrameEnd(0);
+    /* Without a picture yet nothing was drawn: the top screen is as it was. */
+    if (sMirrorFresh) sMirrorShown = true;
+    return true;
+}
+
 static void SurfaceFilter(GPU_TEXTURE_FILTER_PARAM filter)
 {
     /* Batched draws sample with the state at the flush: flush first, and
@@ -12346,7 +12523,11 @@ void CtrVideo_Present(void)
      * the top screen is drawn as with its picture down there (down), the
      * bottom one's picture is not. */
     bool down = bottom || (wanted && native && CtrDexTop_Active());
-    bool dexUp = down && CtrDexTop_Active();
+    /* Single screen: asked for this frame, or on show over a top screen that
+     * is not drawn again this frame (MirrorReady, made outside the frame). */
+    bool mirror = MirrorReady(sMirrorRequested || (sMirrorShown && (sHoldTop || down)));
+    /* The Pokédex's device is not shown with it: the copy is. */
+    bool dexUp = down && CtrDexTop_Active() && !mirror;
     sBottomInUse = bottom;
     if (dexUp)
     {
@@ -12365,11 +12546,18 @@ void CtrVideo_Present(void)
         sStats.mode = CTR_MODE_OTHER;
         sStats.route = CTR_ROUTE_BLANK;
         sStats.gapMs = sStats.arriveMs = sStats.prepMs = 0.0f;
+        /* Single screen: the copy over the held frame, the game's menus
+         * running hidden meanwhile. */
+        if (mirror && MirrorFrame())
+        {
+            /* Shown (MirrorFrame notes it). */
+        }
         /* The Pokédex gone with the top still held: its frame back, once. */
-        if (sHeldTop.kept && sHoldTop && C3D_FrameBegin(C3D_FRAME_SYNCDRAW))
+        else if (sHeldTop.kept && sHoldTop && C3D_FrameBegin(C3D_FRAME_SYNCDRAW))
         {
             HeldTopPutBack();
             C3D_FrameEnd(0);
+            sMirrorShown = false;
         }
         else
             gspWaitForVBlank();
@@ -12757,12 +12945,13 @@ void CtrVideo_Present(void)
      * its planes keep on one plane, and the swoop's crossfade is flat too). */
     bool planesMissing = stereo && !voxel && !blank && !sStage && !sBattle && !planes;
     if (planesMissing) stereo = false;
-    if (down) stereo = planes = battleStereo = false;
+    /* Single screen's copy is flat. */
+    if (down || mirror) stereo = planes = battleStereo = false;
     /* A magnified stage is one flat picture (RenderEye). */
     if (sStageZoomed) stereo = planes = false;
     /* With the Pokédex on the bottom screen the top shows the device, which
      * takes any slider position (RenderDexTop). */
-    bool dexTop = down && CtrDexTop_Active();
+    bool dexTop = down && CtrDexTop_Active() && !mirror;
     if (dexTop) stereo = sTopRight && slider > 0.02f;
     else CtrDexTop_Idle();
     /* The planes' parallax ramp (sPlaneRamp): in while they are used, out
@@ -12851,13 +13040,19 @@ void CtrVideo_Present(void)
     PORT_PROF_END(layers, PORT_PROF_LAYERS);
     PORT_PROF_BEGIN(draw);
 
+    /* What the top screen shows after this frame without single screen's
+     * copy: the frame it kept (the game's screen down there), or one drawn
+     * now. */
+    bool topKept = down && !dexTop && !(sHeldTop.kept && sHoldTop);
     if (down)
     {
         /* The top screen is not drawn: it keeps the frame it showed last -
-         * unless the Pokédex is open down there. */
+         * unless the Pokédex is open down there. With single screen the
+         * copy goes over it below. */
         sPlanes = 0;
         if (bottom) RenderEye(sBottom, clear, 0.0f);
-        if (dexTop) RenderDexTop(stereo, slider);
+        if (mirror) topKept = true;
+        else if (dexTop) RenderDexTop(stereo, slider);
         else if (sHeldTop.kept && sHoldTop) HeldTopPutBack();
     }
     else if (sTransition && !blank)
@@ -12958,6 +13153,16 @@ void CtrVideo_Present(void)
             }
         }
     }
+    /* Single screen: the bottom screen's picture over the top screen, the
+     * game's picture darkened round it - once over a kept frame. Before
+     * this frame's BottomTransfer: the last frame's picture, whole. */
+    if (mirror)
+    {
+        MirrorUpload();
+        MirrorDraw(sTop, !topKept || !sMirrorShown);
+    }
+    /* On show if drawn now, or still there on a frame kept from before. */
+    sMirrorShown = (mirror && sMirrorFresh) || (topKept && sMirrorShown);
 #if CTR_SHOW_FPS
     if (CtrSettings_ShowFps())
     {

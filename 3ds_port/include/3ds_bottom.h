@@ -26,6 +26,9 @@ void CtrBottom_BlitRect(const uint16_t *canvas, int x0, int y0, int x1, int y1);
 void CtrBottom_LastBlitTicks(uint64_t *copy, uint64_t *flush);
 /* The whole canvas at level/4 of its brightness (0..4), for fades. */
 void CtrBottom_BlitDim(const uint16_t *canvas, int level);
+/* How many copies to the screen the three above have made: what is on it
+ * changed when this did (single screen's copy, 3ds_video.c). */
+uint32_t CtrBottom_BlitCount(void);
 
 /* Game side. Init before AgbMain; Frame once per frame, after input is
  * scanned and before the game reads its keys. */

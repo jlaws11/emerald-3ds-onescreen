@@ -29,6 +29,15 @@ void CtrBottom_LastBlitTicks(uint64_t *copy, uint64_t *flush)
     *flush = sFlushTicks;
 }
 
+/* Every copy to the screen counted: single screen's copy of the picture on
+ * the top screen is made again only when this moved (3ds_video.c). */
+static uint32_t sBlits;
+
+uint32_t CtrBottom_BlitCount(void)
+{
+    return sBlits;
+}
+
 void CtrBottom_Blit(const uint16_t *canvas, int x0, int x1)
 {
     u16 *fb = Framebuffer();
@@ -36,6 +45,7 @@ void CtrBottom_Blit(const uint16_t *canvas, int x0, int x1)
 
     sCopyTicks = sFlushTicks = 0;
     if (!fb || x0 >= x1) return;
+    ++sBlits;
     t0 = svcGetSystemTick();
     memcpy(fb + x0 * CTR_BOTTOM_HEIGHT, canvas + x0 * CTR_BOTTOM_HEIGHT,
            (size_t)(x1 - x0) * CTR_BOTTOM_HEIGHT * sizeof(u16));
@@ -54,6 +64,7 @@ void CtrBottom_BlitRect(const uint16_t *canvas, int x0, int y0, int x1, int y1)
 
     sCopyTicks = sFlushTicks = 0;
     if (!fb || x0 >= x1 || count <= 0) return;
+    ++sBlits;
     t0 = svcGetSystemTick();
     /* Whole columns side by side are one run as well: a single copy. */
     if (count == CTR_BOTTOM_HEIGHT)
@@ -81,6 +92,7 @@ void CtrBottom_BlitDim(const uint16_t *canvas, int level)
     size_t pixels = (size_t)CTR_BOTTOM_WIDTH * CTR_BOTTOM_HEIGHT;
 
     if (!fb) return;
+    ++sBlits;
     if (level >= 4)
     {
         memcpy(fb, canvas, pixels * sizeof(u16));

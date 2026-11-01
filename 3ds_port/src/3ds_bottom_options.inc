@@ -48,6 +48,7 @@ static const OptRowDef sRowsUi[] = {
     GAME_ROW(OPT_BUTTON_MODE, CTR_TEXT("BUTTON MODE", "MODO BOTONES", "MODE TOUCHES", "MODO TASTI", "MODO BOTÕES", "TASTEN", "ボタンモード")),
     GAME_ROW(OPT_SOUND, CTR_TEXT("SOUND", "SONIDO", "SON", "AUDIO", "SOM", "TON", "サウンド")),
     EXTRA_ROW("classic_menus"),
+    EXTRA_ROW("single_screen"),
 };
 static const OptRowDef sRowsSystem[] = {
     EXTRA_ROW("speed"),

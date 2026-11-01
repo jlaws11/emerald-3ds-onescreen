@@ -211,6 +211,11 @@ const CtrExtra gCtrExtras[] =
     /* Features add their lines here. */
     {CTR_EXTRAS_SCREEN(CTR_EXTRAS_OPTIONS, 1), CTR_TEXT("3D WORLD", "MUNDO 3D", "MONDE 3D", "MONDO 3D", "MUNDO 3D", "3D-WELT", "3D ワールド"), "voxel_stereo", 3, 0, sVoxelStereo, NULL, NULL, NULL},
     {CTR_EXTRAS_SCREEN(CTR_EXTRAS_OPTIONS, 1), CTR_TEXT("3D DEPTH", "PROFUNDIDAD 3D", "PROFONDEUR 3D", "PROFOND. 3D", "PROFUNDIDADE 3D", "3D-TIEFE", "3D おくゆき"), "voxel_depth", 7, 3, sVoxelDepths, NULL, NULL, NULL},
+    /* For a player who sees the top screen alone (an emulator showing one
+     * screen, a handheld PC): the bottom screen's picture on the top one
+     * whenever the player is down there (3ds_bottom_ui.c, MirrorWanted;
+     * 3ds_video.c draws it). X opens the menu with the buttons. */
+    {CTR_EXTRAS_SCREEN(CTR_EXTRAS_OPTIONS, 1), CTR_TEXT("SINGLE SCREEN", "PANTALLA ÚNICA", "ÉCRAN UNIQUE", "SCHERMO UNICO", "TELA ÚNICA", "EIN BILDSCHIRM", "がめん ひとつ"), "single_screen", 2, 0, gCtrExtrasOffOn, NULL, NULL, NULL},
     {CTR_EXTRAS_ENHANCEMENTS, CTR_TEXT("SPEED", "VELOC. JUEGO", "VITESSE", "VELOCITÀ", "VELOCIDADE", "TEMPO", "スピード"), "speed", 0, 0, NULL, NULL, SpeedStep, SpeedText},
     /* The game and the music keep real time on a slow frame; the sound
      * engine mixes on the DSP's clock (3ds_platform.c, 3ds_audio.c). */

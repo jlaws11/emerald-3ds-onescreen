@@ -2700,9 +2700,11 @@ static void FastForward(void)
 bool8 CtrBattleMenu_Active(void)
 {
     /* Link battles too (local wireless): the player's choices go through the
-     * same controller. Drawn on the top screen, the menu ran into the wide
-     * text box. Not for a recorded battle played back: nobody chooses. */
-    return sRes.ready && !(gBattleTypeFlags & BATTLE_TYPE_RECORDED);
+     * same controller. Not for a recorded battle played back: nobody
+     * chooses. Nor with SINGLE SCREEN on (3ds_extras.c): the game's own
+     * menus stay on the top screen, in the text box as on the GBA, its
+     * pages laid out across the width (3ds_video.c, BattleBandRight). */
+    return sRes.ready && !(gBattleTypeFlags & BATTLE_TYPE_RECORDED) && CtrExtras_Get("single_screen") != 1;
 }
 
 void CtrBattleMenu_Begin(void)
@@ -7548,6 +7550,35 @@ void CtrBottom_OnResume(void)
     sResumed = true;
 }
 
+/*
+ * Single screen (OPTIONS' SINGLE SCREEN, 3ds_extras.c): whether the top screen
+ * shows this screen's picture this frame (3ds_video.c draws it, CtrVideo_SetMirror).
+ * Wherever the player has to look down here: the dock or the header with the
+ * X focus, the options or the save screen inside them, the Fly map, a game
+ * screen open here (party, bag, Pokédex, PokéNav, summary, the trainer card,
+ * the boxes, a shop, a trade), and the hidden menus the top screen holds the
+ * world for. Not the title, nor the field with the buttons the game's, nor a
+ * battle's choices: with SINGLE SCREEN on those are the game's own menus on
+ * the top screen (CtrBattleMenu_Active), and the battle modes below never
+ * come. Every one of those takes the buttons (ProcessKeys, the game's own
+ * screens), so the touch screen is never needed.
+ */
+static bool8 MirrorWanted(u8 mode, bool8 hold)
+{
+    if (CtrExtras_Get("single_screen") != 1)
+        return FALSE;
+    switch (mode)
+    {
+    case MODE_OFF:
+    case MODE_BATTLE_INFO:
+        return FALSE;
+    case MODE_FIELD:
+        return sFocus != FOCUS_NONE || sInside != INSIDE_NONE || sMapFly || hold;
+    default:
+        return TRUE;
+    }
+}
+
 void CtrBottom_Frame(void)
 {
     static u32 frames;
@@ -7601,7 +7632,10 @@ void CtrBottom_Frame(void)
     if (sMapFly && (gMain.inBattle || sScreen != SCR_MAP))
         sMapFly = FALSE;
     if (BattleIntro(mode))
+    {
+        CtrVideo_SetMirror(FALSE);
         return;
+    }
     /* A screen to leave for, not taken by the one on show as it closed: the
      * field opens it (OpenAsked), or it is dropped after four seconds. */
     if (sLeaveTo < SCR_COUNT && (mode == MODE_FIELD || mode >= MODE_BATTLE_INFO || ++sLeaveToWait > 240))
@@ -7619,6 +7653,8 @@ void CtrBottom_Frame(void)
         CtrVideo_HoldTop(hold);
         held = hold;
     }
+    /* After the keys: the X that took the focus shows this screen at once. */
+    CtrVideo_SetMirror(MirrorWanted(mode, hold));
     if (hold && mode != MODE_POKENAV && mode != MODE_STORAGE && mode != MODE_PARTY_MENU && mode != MODE_SUMMARY
      && mode != MODE_CARD
      && !BagShown(mode)

@@ -47,6 +47,54 @@ int main(void)
     assert(CtrVideo_ObjTile(1023, 1, 0, 8, false, true) == 0);
     assert(CtrVideo_AffineReference(0x0fffff00) == -256);
     assert(CtrVideo_AffineReference(0x07ffffff) == 0x07ffffff);
-    puts("PASS video decode: 32768 colours, full atlas, BG/OBJ addressing, affine sign");
+
+    /* Single screen: the bottom screen's framebuffer (column after column,
+     * each bottom to top) into a 512x256 texture, every pixel where
+     * CtrVideo_Texel puts it and nothing outside the picture touched. */
+    {
+        enum { W = 320, H = 240, TW = 512, TH = 256 };
+        static uint16_t screen[W * H], texels[TW * TH];
+
+        for (unsigned x = 0; x < W; ++x)
+            for (unsigned y = 0; y < H; ++y)
+                screen[x * H + (H - 1 - y)] = (uint16_t)(x * 241 + y * 7 + 1);
+        memset(texels, 0, sizeof(texels));
+        CtrVideo_ScreenToTexels(texels, TW, screen, W, H);
+        for (unsigned y = 0; y < TH; ++y)
+            for (unsigned x = 0; x < TW; ++x)
+            {
+                uint16_t want = x < W && y < H ? (uint16_t)(x * 241 + y * 7 + 1) : 0;
+
+                assert(texels[CtrVideo_Texel(x, y, TW)] == want);
+            }
+        /* The top-left pixel is the first column's last entry. */
+        assert(texels[CtrVideo_Texel(0, 0, TW)] == screen[H - 1]);
+    }
+    /* The battle box band's pages (textbox_map.bin's top frame rows): the
+     * message box is one box to its right cap; the action menu's box starts
+     * at column 15 beside the prompt's; the PP and type box at column 19,
+     * with the moves box's right edge. An empty row is no box. */
+    {
+        static const uint16_t message[30] = {
+            0x0003, 0x0004, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005,
+            0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005,
+            0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0006, 0x0007};
+        static const uint16_t action[30] = {
+            0x0003, 0x0004, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x0005,
+            0x0005, 0x0005, 0x0005, 0x0005, 0x0005, 0x1012, 0x1013, 0x1013, 0x1013, 0x1013,
+            0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1014};
+        static const uint16_t moves[30] = {
+            0x1012, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013,
+            0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1014,
+            0x1012, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1013, 0x1014};
+        static const uint16_t empty[30];
+
+        assert(CtrVideo_BandSecondBox(message, 30, 2) == 0);
+        assert(CtrVideo_BandSecondBox(action, 30, 2) == 15);
+        assert(CtrVideo_BandSecondBox(moves, 30, 2) == 19);
+        assert(CtrVideo_BandSecondBox(empty, 30, 2) == 0);
+    }
+    puts("PASS video decode: 32768 colours, full atlas, BG/OBJ addressing, affine sign, screen to texels, "
+         "battle box pages");
     return 0;
 }
