@@ -1,0 +1,98 @@
+name: Single screen release
+
+# Builds the engine-only Emerald3DS.3dsx for the single-screen branch in the
+# same pinned environment as an official release (tools/release_env, from
+# upstream.lock), checks its data ABI against the official release it is based
+# on (so an existing emerald3ds.pak keeps working), and publishes it as a
+# GitHub release of this fork. No ROM is used or shipped.
+
+on:
+  push:
+    branches: [single-screen]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BASE_RELEASE: v0.5.0
+      UPSTREAM: ZallaxDev/emerald-3ds
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release environment image
+        run: |
+          read PY_IMAGE PILLOW DKA_IMAGE < <(python3 - <<'EOF'
+          import tomllib
+          lock = tomllib.load(open("upstream.lock", "rb"))
+          print(lock["python"]["image"], lock["python"]["pillow"], lock["devkitarm"]["image"])
+          EOF
+          )
+          echo "python=$PY_IMAGE pillow=$PILLOW devkitarm=$DKA_IMAGE"
+          docker build -t emerald3ds-release-env \
+            --build-arg PYTHON_IMAGE="$PY_IMAGE" \
+            --build-arg DEVKITARM_IMAGE="$DKA_IMAGE" \
+            --build-arg PILLOW="$PILLOW" tools/release_env
+
+      - name: Source tree
+        run: python3 tools/bootstrap.py
+
+      - name: Build the engine-only 3DSX
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD/build/upstream" -e HOME=/tmp emerald3ds-release-env \
+            bash -c "set -e; make -j4 tools; make -j4 generated; \
+                     make -C 3ds_port -j4 release PYTHON=python3 PORT_LANG=en"
+          sudo chown -R "$(id -u):$(id -g)" build
+          ls -l build/upstream/3ds_port/dist/
+
+      - name: Data ABI against the official release
+        id: abi
+        run: |
+          ours=$(python3 -c "import struct,sys; print('%08x' % struct.unpack('<I', open(sys.argv[1],'rb').read(4))[0])" \
+                 build/upstream/3ds_port/romfs/engine/abi.bin)
+          echo "ours=$ours" >> "$GITHUB_OUTPUT"
+          theirs=""
+          if curl -fsSL -o official-manifest.json \
+               "https://github.com/$UPSTREAM/releases/download/$BASE_RELEASE/web-manifest.json"; then
+            theirs=$(python3 -c "import json; print(json.load(open('official-manifest.json')).get('dataAbi',''))")
+          fi
+          echo "theirs=$theirs" >> "$GITHUB_OUTPUT"
+          echo "This build's data ABI: $ours; official $BASE_RELEASE: ${theirs:-unknown}"
+
+      - name: Audit the files that ship
+        run: |
+          mkdir -p ship
+          cp build/upstream/3ds_port/dist/Emerald3DS.3dsx build/upstream/3ds_port/dist/Emerald3DS.smdh ship/
+          python3 -c "import zipfile,pathlib; z=zipfile.ZipFile('ship.zip','w'); [z.write(p, 'payload/' + p.name) for p in pathlib.Path('ship').iterdir()]"
+          python3 tools/release_audit.py --zip ship.zip --strict
+          (cd ship && sha256sum Emerald3DS.3dsx Emerald3DS.smdh > SHA256SUMS.txt)
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OURS: ${{ steps.abi.outputs.ours }}
+          THEIRS: ${{ steps.abi.outputs.theirs }}
+        run: |
+          tag="single-screen-${GITHUB_SHA::7}"
+          if [ -n "$THEIRS" ] && [ "$OURS" = "$THEIRS" ]; then
+            pak="Its data ABI ($OURS) matches the official $BASE_RELEASE release: an emerald3ds.pak made for $BASE_RELEASE (emerald-3ds.com) works with it unchanged."
+          elif [ -n "$THEIRS" ]; then
+            pak="Its data ABI ($OURS) differs from the official $BASE_RELEASE release ($THEIRS): a $BASE_RELEASE emerald3ds.pak will be refused. Do not use it with an existing install."
+          else
+            pak="Its data ABI is $OURS; the official $BASE_RELEASE manifest could not be read to compare."
+          fi
+          cat > notes.md <<EOF
+          Emerald 3DS $BASE_RELEASE with **SINGLE SCREEN** (OPTIONS > GENERAL > INTERFACE): the bottom screen's menus on the top screen when needed, and battles with the game's own menus in the text box, as on the GBA. See docs/SINGLE_SCREEN.md.
+
+          **Install:** back up \`emerald3ds.sav\` and the \`emerald3ds.clock\` files, then replace \`/3ds/emerald3ds/Emerald3DS.3dsx\` (in Azahar: its \`sdmc\` folder) with this one. Keep your \`emerald3ds.pak\`.
+
+          $pak
+
+          Engine only: no game data and no ROM content. Unofficial build of commit ${GITHUB_SHA::7}, not from the Emerald 3DS developer.
+          EOF
+          gh release create "$tag" ship/Emerald3DS.3dsx ship/Emerald3DS.smdh ship/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "Single screen (based on $BASE_RELEASE, ${GITHUB_SHA::7})" --notes-file notes.md

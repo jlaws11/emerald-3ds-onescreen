@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # This fork's release branch is built by single-screen-release.yml.
+    branches-ignore: [single-screen]
   pull_request:
 
 jobs:
