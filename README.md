@@ -30,7 +30,7 @@ Emerald 3DS is two files in `/3ds/emerald3ds/`:
 | `Emerald3DS.3dsx` | The game engine, with single screen built in. No Pokémon content in it. | Built from this fork's code by GitHub. |
 | `emerald3ds.pak` | The game data: graphics, maps, text, music. | Made on **your** machine from **your own** Pokémon Emerald ROM. |
 
-The **Builder AppImage** on this fork's [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases)
+The **installer** (an AppImage) on this fork's [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases)
 carries the engine and makes the data pack from your ROM, then writes both files. It does not turn other
 GBA games into 3DS games: Emerald 3DS is a rebuild of Pokémon Emerald alone.
 
@@ -42,8 +42,8 @@ make the pack for this fork's engine.
 You need **Azahar** (the 3DS emulator; on the Deck from EmuDeck or the Discover store) and your own
 **Pokémon Emerald (USA/Europe)** ROM, dumped from your cartridge. Other versions and ROM hacks are refused.
 
-1. In Desktop Mode, download **Emerald3DS-Builder-single-screen-x86_64.AppImage** from the newest
-   `builder-…` release on the [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases) page.
+1. In Desktop Mode, download **Emerald-3DS-Single-Screen-Installer.AppImage** from the
+   **Steam Deck & Linux installer** release (at the top, marked Latest) on the [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases) page.
 2. If you already play Emerald 3DS, back up `emerald3ds.sav` and the `emerald3ds.clock` files from
    Azahar's `sdmc/3ds/emerald3ds/` folder first.
 3. Right-click the AppImage → Properties → Permissions → tick **Is executable** (or add it to Gear Lever),
@@ -58,7 +58,7 @@ You need **Azahar** (the 3DS emulator; on the Deck from EmuDeck or the Discover 
    Azahar to Steam (Games → Add a Non-Steam Game). Optionally, put Azahar's **Swap Screens** hotkey on a
    back button for the rare moment you want the real bottom screen.
 
-From the command line: `./Emerald3DS-Builder-single-screen-x86_64.AppImage build --rom emerald.gba --output folder`.
+From the command line: `./Emerald-3DS-Single-Screen-Installer.AppImage build --rom emerald.gba --output folder`.
 
 ## Sharing it
 
@@ -80,7 +80,9 @@ never on GitHub. Then:
 2. The recipe for it is made from the build's data and a ROM (`tools/gen_recipe.py`), audited
    (`tools/release_audit.py --strict --rom`), and committed as `.github/payload/emerald3ds.recipe`.
    The build's data reaches that step only encrypted to `.github/pack-inputs.pub.pem`.
-3. That commit builds a new **Builder AppImage** with the new engine and recipe.
+3. That commit builds a new **installer** AppImage with the new engine and recipe, published as the
+   `steam-deck-installer-…` release (marked Latest; older installers are removed). The
+   `single-screen-…` release is the executable alone, for developers.
 
 Changes to workflows, docs or this README do not rebuild the game. The original project's CI does not
 run for pushes to `main` here: its test step hung for hours on this fork.

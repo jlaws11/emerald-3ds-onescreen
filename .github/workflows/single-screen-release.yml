@@ -165,14 +165,14 @@ jobs:
           cat > notes.md <<EOF
           Emerald 3DS $BASE_RELEASE with **SINGLE SCREEN** (OPTIONS > GENERAL > INTERFACE): the bottom screen's menus on the top screen when needed, and battles with the game's own menus in the text box, as on the GBA. See docs/SINGLE_SCREEN.md.
 
-          **Install:** back up \`emerald3ds.sav\` and the \`emerald3ds.clock\` files, then replace \`/3ds/emerald3ds/Emerald3DS.3dsx\` (in Azahar: its \`sdmc\` folder) with this one. Keep your \`emerald3ds.pak\`.
+          **Install:** back up \`emerald3ds.sav\` and the \`emerald3ds.clock\` files, and use this fork's installer (the \`steam-deck-installer-…\` release) with your own ROM: it writes this executable with the data pack made for it. This release is the executable alone, for developers.
 
           $pak
 
           Engine only: no game data and no ROM content. Unofficial build of commit ${GITHUB_SHA::7}, not from the Emerald 3DS developer.
           EOF
           gh release create "$tag" ship/Emerald3DS.3dsx ship/Emerald3DS.smdh ship/SHA256SUMS.txt \
-            --target "$GITHUB_SHA" --title "Single screen (based on $BASE_RELEASE, ${GITHUB_SHA::7})" --notes-file notes.md
+            --target "$GITHUB_SHA" --title "Game engine only, for developers (${GITHUB_SHA::7})" --notes-file notes.md --latest=false
           # The recipe inputs, encrypted (see "Encrypted recipe inputs"): a
           # prerelease of their own, deleted once fetched.
           gh release create "recipe-inputs-${GITHUB_SHA::7}" recipe-inputs.tar.xz.enc recipe-inputs.key.enc \
