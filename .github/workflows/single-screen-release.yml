@@ -14,6 +14,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: single-screen-release
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -91,6 +95,22 @@ jobs:
           strip_debug "$P/build/gamedata_image.elf" inputs/build/gamedata_image.elf
           strip_debug gba/pokeemerald/pokeemerald.elf inputs/pokeemerald.elf
           sudo chown -R "$(id -u):$(id -g)" inputs
+          # The voxel generators' inputs as this build's tree has them (the
+          # recipe finds each in the ROM; the set must be the build's own).
+          python3 - <<'EOF'
+          import shutil, sys
+          from pathlib import Path
+          sys.path.insert(0, "tools")
+          import vtree_manifest
+          root, out = Path("build/upstream"), Path("inputs/decomp")
+          files = vtree_manifest.binary_inputs(root)
+          files += [f + ".lz" for f in files if (root / (f + ".lz")).exists()]
+          for rel in files:
+              (out / rel).parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(root / rel, out / rel)
+          (out / "binary_inputs.txt").write_text("\n".join(files) + "\n")
+          print("voxel inputs:", len(files))
+          EOF
           tar -C inputs -cf - . | xz -T0 -6 > inputs.tar.xz
           openssl rand -out inputs.key 32
           openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:inputs.key -in inputs.tar.xz -out recipe-inputs.tar.xz.enc
