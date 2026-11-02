@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     env:
-      ENGINE_RELEASE: single-screen-6826e1e
-      ENGINE_SHA256: 73be5f70d4d1a4aa87a550358e3bfbf6b4e57e70c780fd8f7b2058b1b7ea83c9
+      ENGINE_RELEASE: single-screen-860d86e
+      ENGINE_SHA256: fc9456adc3aae5a8b9d1e3a3297730662356b5b18e2cdac0d14a2fdb9be50e58
     steps:
       - uses: actions/checkout@v4
 
@@ -75,7 +75,7 @@ jobs:
           from emerald3ds_builder.recipe import Recipe
           r = Recipe.load('payload/emerald3ds.recipe')
           print('recipe ABI %08x, release %s' % (r.engine_abi, r.release))
-          assert r.engine_abi == 0x9f33cc4a"
+          assert r.engine_abi == 0xd31cbcbf"
 
       - name: Builder app (PyInstaller)
         working-directory: builder

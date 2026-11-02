@@ -87,9 +87,11 @@ run for pushes to `main` here: its test step hung for hours on this fork.
 
 ## Status and limits
 
-- **Not yet tested in play.** It builds, passes the project's tests that cover the changed code, and the
-  AppImage's pack matches the engine byte for byte. If something looks wrong in a menu or a battle, open
-  an issue on this fork with a screenshot.
+- **Tested in play** on a Steam Deck (Azahar, single-screen layout): the menus and battles. The
+  first test showed stripes in the stretched move box in battle; that is fixed in the current build. If something else looks
+  wrong in a menu or a battle, open an issue on this fork with a screenshot.
+- The AppImage's pack matches the engine byte for byte (checked by building a pack with the published
+  AppImage).
 - Made for emulators. It should also run on a real 3DS, but that is untested.
 - English (USA/Europe) Emerald only, like the official release.
 - If the official Emerald 3DS adds or changes things after v0.5.0, this fork does not have them until it
