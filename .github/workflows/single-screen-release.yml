@@ -49,6 +49,57 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" build
           ls -l build/upstream/3ds_port/dist/
 
+      # The inputs a data pack recipe for this executable is made from
+      # (tools/gen_recipe.py): the build's game-data staging, its ELFs and the
+      # original game's ELF, rebuilt from the pinned decomp and checked
+      # against the supported ROM's SHA-1 (no ROM involved). They hold game
+      # data, so they leave the runner only encrypted to the public key in
+      # .github/pack-inputs.pub.pem; the recipe is made where that key's
+      # private half and the player's own ROM are.
+      - name: Original game ELF
+        run: |
+          read EMERALD_REPO EMERALD_COMMIT AGBCC_REPO AGBCC_COMMIT ROM_SHA1 < <(python3 - <<'EOF'
+          import tomllib
+          lock = tomllib.load(open("upstream.lock", "rb"))
+          print(lock["pokeemerald"]["repository"], lock["pokeemerald"]["commit"],
+                lock["agbcc"]["repository"], lock["agbcc"]["commit"], lock["rom"]["sha1"])
+          EOF
+          )
+          for pair in "pokeemerald $EMERALD_REPO $EMERALD_COMMIT" "agbcc $AGBCC_REPO $AGBCC_COMMIT"; do
+            set -- $pair
+            git init -q "gba/$1"
+            git -C "gba/$1" fetch -q --depth 1 "$2" "$3"
+            git -C "gba/$1" checkout -q --detach FETCH_HEAD
+          done
+          docker run --rm -v "$PWD/gba:/gba" -e HOME=/tmp emerald3ds-release-env bash -c \
+            "set -e; cd /gba/agbcc && ./build.sh && ./install.sh /gba/pokeemerald && \
+             cd /gba/pokeemerald && make -j4 tools && make -j4"
+          sudo chown -R "$(id -u):$(id -g)" gba
+          test "$(sha1sum gba/pokeemerald/pokeemerald.gba | cut -d' ' -f1)" = "$ROM_SHA1"
+
+      - name: Encrypted recipe inputs
+        run: |
+          P=build/upstream/3ds_port
+          mkdir -p inputs/build inputs/dist
+          cp -r "$P/romfs" inputs/romfs
+          cp "$P"/dist/Emerald3DS.3dsx "$P"/dist/Emerald3DS.smdh inputs/dist/
+          cp "$P/build/gamedata_image.map" inputs/build/
+          strip_debug() {
+            docker run --rm -v "$PWD:$PWD" -w "$PWD" emerald3ds-release-env arm-none-eabi-objcopy --strip-debug "$1" "$2"
+          }
+          strip_debug "$P/emerald3ds.elf" inputs/emerald3ds.elf
+          strip_debug "$P/build/gamedata_image.elf" inputs/build/gamedata_image.elf
+          strip_debug gba/pokeemerald/pokeemerald.elf inputs/pokeemerald.elf
+          sudo chown -R "$(id -u):$(id -g)" inputs
+          tar -C inputs -cf - . | xz -T0 -6 > inputs.tar.xz
+          openssl rand -out inputs.key 32
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:inputs.key -in inputs.tar.xz -out recipe-inputs.tar.xz.enc
+          openssl pkeyutl -encrypt -pubin -inkey .github/pack-inputs.pub.pem \
+            -pkeyopt rsa_padding_mode:oaep -in inputs.key -out recipe-inputs.key.enc
+          rm -f inputs.key inputs.tar.xz
+          rm -rf inputs
+          ls -l recipe-inputs.*
+
       - name: Data ABI against the official release
         id: abi
         run: |
@@ -81,7 +132,7 @@ jobs:
           if [ -n "$THEIRS" ] && [ "$OURS" = "$THEIRS" ]; then
             pak="Its data ABI ($OURS) matches the official $BASE_RELEASE release: an emerald3ds.pak made for $BASE_RELEASE (emerald-3ds.com) works with it unchanged."
           elif [ -n "$THEIRS" ]; then
-            pak="Its data ABI ($OURS) differs from the official $BASE_RELEASE release ($THEIRS): a $BASE_RELEASE emerald3ds.pak will be refused. Do not use it with an existing install."
+            pak="It needs an emerald3ds.pak made for this build (data ABI $OURS): a pack made for the official $BASE_RELEASE ($THEIRS) is refused, with an error and nothing else changed."
           else
             pak="Its data ABI is $OURS; the official $BASE_RELEASE manifest could not be read to compare."
           fi
@@ -96,3 +147,8 @@ jobs:
           EOF
           gh release create "$tag" ship/Emerald3DS.3dsx ship/Emerald3DS.smdh ship/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "Single screen (based on $BASE_RELEASE, ${GITHUB_SHA::7})" --notes-file notes.md
+          # The recipe inputs, encrypted (see "Encrypted recipe inputs"): a
+          # prerelease of their own, deleted once fetched.
+          gh release create "recipe-inputs-${GITHUB_SHA::7}" recipe-inputs.tar.xz.enc recipe-inputs.key.enc \
+            --target "$GITHUB_SHA" --prerelease --title "Recipe inputs ${GITHUB_SHA::7} (encrypted, temporary)" \
+            --notes "Encrypted build inputs for making this build's data pack recipe. Not for use; removed soon."
