@@ -114,9 +114,9 @@ jobs:
           curl -fsSL -o appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
-          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir Emerald3DS-Builder-single-screen-x86_64.AppImage
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir Emerald-3DS-Single-Screen-Installer.AppImage
           ls -l *.AppImage
-          sha256sum Emerald3DS-Builder-single-screen-x86_64.AppImage > SHA256SUMS-builder.txt
+          sha256sum Emerald-3DS-Single-Screen-Installer.AppImage > SHA256SUMS-builder.txt
 
       - name: Audit
         run: |
@@ -127,15 +127,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="builder-${GITHUB_SHA::7}"
+          tag="steam-deck-installer-${GITHUB_SHA::7}"
           cat > notes.md <<EOF
+          **This is the one to download** to play on a Steam Deck or Linux PC: it installs the game from your own ROM.
+
           The Emerald 3DS Builder for Linux and the Steam Deck, for the single-screen build ($ENGINE_RELEASE). It makes \`emerald3ds.pak\` from **your own** Pokémon Emerald ROM (USA/Europe), offline, and writes it with the matching \`Emerald3DS.3dsx\`.
 
           **Steam Deck (Desktop Mode):** download the AppImage, right-click it > Properties > Permissions > "Is executable" (or add it to Gear Lever), and open it. Choose your ROM, and for "Install to" pick Azahar's \`sdmc\` folder: it writes \`3ds/emerald3ds/\` there (it may say the folder is not a 3DS SD card; that is fine). Back up \`emerald3ds.sav\` first.
 
-          Online, it also downloads the optional follower sprites. Command line: \`./Emerald3DS-Builder-single-screen-x86_64.AppImage build --rom rom.gba --output folder\`.
+          Online, it also downloads the optional follower sprites. Command line: \`./Emerald-3DS-Single-Screen-Installer.AppImage build --rom rom.gba --output folder\`.
 
           Contains no game data and no ROM content. Unofficial build of the official builder, not from the Emerald 3DS developer.
           EOF
-          gh release create "$tag" Emerald3DS-Builder-single-screen-x86_64.AppImage SHA256SUMS-builder.txt \
-            --target "$GITHUB_SHA" --title "Builder AppImage (single screen, ${GITHUB_SHA::7})" --notes-file notes.md
+          gh release create "$tag" Emerald-3DS-Single-Screen-Installer.AppImage SHA256SUMS-builder.txt \
+            --target "$GITHUB_SHA" --title "Steam Deck & Linux installer: Pokémon Emerald 3DS Single Screen" --notes-file notes.md --latest
+          # The engine release is for developers: titled so, and never "Latest".
+          gh release edit "$ENGINE_RELEASE" --title "Game engine only, for developers (${ENGINE_RELEASE#single-screen-})" --latest=false
+          # Only the newest installer stays up, so nobody downloads one made for an older engine.
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' |
+            grep -E '^(builder|steam-deck-installer)-' | grep -vx "$tag" | while read -r old; do
+              gh release delete "$old" --yes --cleanup-tag && echo "deleted $old"
+            done
