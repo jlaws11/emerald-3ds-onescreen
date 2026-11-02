@@ -1,0 +1,141 @@
+name: Builder AppImage
+
+# The Emerald 3DS Builder (builder/, the official one) as a Linux AppImage for
+# the Steam Deck and other Linux PCs, with this fork's payload inside: the
+# single-screen release's Emerald3DS.3dsx, the recipe made for it
+# (.github/payload/emerald3ds.recipe) and the voxel generators. Run on the
+# player's machine with their own ROM, offline, it makes the matching
+# emerald3ds.pak (and downloads the optional follower sprites when online).
+# Built on an older Ubuntu so the AppImage runs on older systems too.
+
+on:
+  push:
+    branches: [single-screen]
+    paths: ['.github/payload/**', '.github/workflows/builder-appimage.yml', 'builder/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: builder-appimage
+  cancel-in-progress: true
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      ENGINE_RELEASE: single-screen-6826e1e
+      ENGINE_SHA256: 73be5f70d4d1a4aa87a550358e3bfbf6b4e57e70c780fd8f7b2058b1b7ea83c9
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Python and Pillow the voxel data is made with (upstream.lock):
+      # the builder runs the generators with its own interpreter, and their
+      # output is checked against the recipe's CRCs.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Python packages
+        run: |
+          PILLOW=$(python3 -c "import tomllib; print(tomllib.load(open('upstream.lock','rb'))['python']['pillow'])")
+          python3 -m pip install "pillow==$PILLOW" pyinstaller
+          python3 -c "import sys, tkinter, PIL; print(sys.version, 'tk', tkinter.TkVersion, 'pillow', PIL.__version__)"
+
+      - name: Payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p payload
+          gh release download "$ENGINE_RELEASE" --pattern 'Emerald3DS.*' --dir payload
+          echo "$ENGINE_SHA256  payload/Emerald3DS.3dsx" | sha256sum -c -
+          cp .github/payload/emerald3ds.recipe payload/
+          python3 - <<'EOF'
+          import shutil, sys
+          from pathlib import Path
+          sys.path.insert(0, "tools")
+          import build_release as br
+          port, payload = Path("3ds_port"), Path("payload")
+          scripts, external = br.local_closure(port / "scripts", br.GENERATORS)
+          (payload / "voxelgen" / "scripts").mkdir(parents=True)
+          for name in scripts:
+              shutil.copy2(port / "scripts" / name, payload / "voxelgen" / "scripts" / name)
+          for rel in br.VOXELGEN_FILES:
+              dst = payload / "voxelgen" / rel
+              dst.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(port / rel, dst)
+          Path("builder/build").mkdir(parents=True, exist_ok=True)
+          Path("builder/build/hidden-imports.txt").write_text("\n".join(sorted(external)) + "\n")
+          print("voxelgen scripts:", len(scripts), "external modules:", sorted(external))
+          EOF
+          # The recipe made for this executable: its ABI must be the executable's.
+          python3 -c "
+          import sys; sys.path.insert(0, 'builder')
+          from emerald3ds_builder.recipe import Recipe
+          r = Recipe.load('payload/emerald3ds.recipe')
+          print('recipe ABI %08x, release %s' % (r.engine_abi, r.release))
+          assert r.engine_abi == 0x9f33cc4a"
+
+      - name: Builder app (PyInstaller)
+        working-directory: builder
+        run: |
+          python3 -m PyInstaller --noconfirm --clean --distpath build/dist --workpath build/pyi emerald3ds-builder.spec
+          ls build/dist/Emerald3DS-Builder
+
+      - name: AppImage
+        run: |
+          APP=AppDir/usr/lib/emerald3ds-builder
+          mkdir -p "$APP"
+          cp -r builder/build/dist/Emerald3DS-Builder/. "$APP/"
+          cp -r payload "$APP/payload"
+          cp 3ds_port/assets/artwork/icon.png AppDir/emerald3ds-builder.png
+          cat > AppDir/emerald3ds-builder.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Emerald 3DS Builder (single screen)
+          Comment=Make the Emerald 3DS data pack from your own Pokémon Emerald ROM
+          Exec=Emerald3DS-Builder
+          Icon=emerald3ds-builder
+          Categories=Game;Utility;
+          Terminal=false
+          EOF
+          cat > AppDir/AppRun <<'EOF'
+          #!/bin/sh
+          # The window without arguments; the command line with them (build,
+          # install, verify: see --help).
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/lib/emerald3ds-builder/Emerald3DS-Builder" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          # The packaged app starts and finds its payload.
+          AppDir/AppRun --help
+          AppDir/AppRun verify --help >/dev/null
+          curl -fsSL -o appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir Emerald3DS-Builder-single-screen-x86_64.AppImage
+          ls -l *.AppImage
+          sha256sum Emerald3DS-Builder-single-screen-x86_64.AppImage > SHA256SUMS-builder.txt
+
+      - name: Audit
+        run: |
+          python3 -c "import zipfile; z=zipfile.ZipFile('payload.zip','w'); [z.write(p, p.as_posix()) for p in __import__('pathlib').Path('payload').rglob('*') if p.is_file()]"
+          python3 tools/release_audit.py --zip payload.zip --strict
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="builder-${GITHUB_SHA::7}"
+          cat > notes.md <<EOF
+          The Emerald 3DS Builder for Linux and the Steam Deck, for the single-screen build ($ENGINE_RELEASE). It makes \`emerald3ds.pak\` from **your own** Pokémon Emerald ROM (USA/Europe), offline, and writes it with the matching \`Emerald3DS.3dsx\`.
+
+          **Steam Deck (Desktop Mode):** download the AppImage, right-click it > Properties > Permissions > "Is executable" (or add it to Gear Lever), and open it. Choose your ROM, and for "Install to" pick Azahar's \`sdmc\` folder: it writes \`3ds/emerald3ds/\` there (it may say the folder is not a 3DS SD card; that is fine). Back up \`emerald3ds.sav\` first.
+
+          Online, it also downloads the optional follower sprites. Command line: \`./Emerald3DS-Builder-single-screen-x86_64.AppImage build --rom rom.gba --output folder\`.
+
+          Contains no game data and no ROM content. Unofficial build of the official builder, not from the Emerald 3DS developer.
+          EOF
+          gh release create "$tag" Emerald3DS-Builder-single-screen-x86_64.AppImage SHA256SUMS-builder.txt \
+            --target "$GITHUB_SHA" --title "Builder AppImage (single screen, ${GITHUB_SHA::7})" --notes-file notes.md
