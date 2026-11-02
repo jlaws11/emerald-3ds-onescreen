@@ -9,8 +9,12 @@ name: Single screen release
 on:
   push:
     branches: [main]
-    # Changes to the workflows, the docs or the README alone do not rebuild the game.
-    paths-ignore: ['.github/**', 'docs/**', 'README.md']
+    # Changes to the docs, the README or the other workflows alone do not
+    # rebuild the game; a new key for the recipe inputs (.github/pack-inputs.pub.pem)
+    # or a change to this workflow does.
+    paths-ignore: ['docs/**', 'README.md', '.github/payload/**', '.github/cleanup-releases.txt',
+                   '.github/workflows/builder-appimage.yml', '.github/workflows/cleanup-releases.yml',
+                   '.github/workflows/ci.yml']
   workflow_dispatch:
 
 permissions:
