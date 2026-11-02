@@ -1,3 +1,102 @@
+# Emerald 3DS — Single Screen (unofficial fork)
+
+> **This is an unofficial fork of [Emerald 3DS](https://github.com/ZallaxDev/emerald-3ds) by Zallax.**
+> It adds a **single-screen mode** for playing on one screen: an emulator such as Azahar on a Steam Deck,
+> a handheld PC or a TV. It is not made or supported by the Emerald 3DS developer: please don't ask
+> them for help with it. The original project's README follows below this section.
+
+## What this fork adds
+
+A **SINGLE SCREEN** option (OPTIONS → GENERAL → INTERFACE, off until you turn it on):
+
+- **The game stays full screen on the top screen.** The bottom screen's menus come up on the top
+  screen only when you need them: press **X** in the field for the menu (map, party, bag, Pokédex,
+  PokéNav, save, options), and the PC boxes, shops, trades and summaries appear by themselves.
+  It is the bottom screen's picture in the middle of the top screen, with the game dimmed around it.
+- **Battles work like the GBA originals.** FIGHT / BAG / POKéMON / RUN sit in the text box beside
+  "What will … do?", and FIGHT shows your four moves with their PP and type, with the battle in full view
+  above. The text box uses the GBA's original style in battle.
+- **Everything works with buttons**, so you never need the touch screen and can keep your emulator on
+  a single-screen layout.
+
+Based on the official **v0.5.0**. Details for developers: [docs/SINGLE_SCREEN.md](docs/SINGLE_SCREEN.md).
+
+## How it fits together
+
+Emerald 3DS is two files in `/3ds/emerald3ds/`:
+
+| File | What it is | Where it comes from |
+|---|---|---|
+| `Emerald3DS.3dsx` | The game engine, with single screen built in. No Pokémon content in it. | Built from this fork's code by GitHub. |
+| `emerald3ds.pak` | The game data: graphics, maps, text, music. | Made on **your** machine from **your own** Pokémon Emerald ROM. |
+
+The **Builder AppImage** on this fork's [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases)
+carries the engine and makes the data pack from your ROM, then writes both files. It does not turn other
+GBA games into 3DS games: Emerald 3DS is a rebuild of Pokémon Emerald alone.
+
+A data pack only works with the engine it was made for. Use this fork's builder, not emerald-3ds.com, to
+make the pack for this fork's engine.
+
+## Install on a Steam Deck (or any Linux PC)
+
+You need **Azahar** (the 3DS emulator; on the Deck from EmuDeck or the Discover store) and your own
+**Pokémon Emerald (USA/Europe)** ROM, dumped from your cartridge. Other versions and ROM hacks are refused.
+
+1. In Desktop Mode, download **Emerald3DS-Builder-single-screen-x86_64.AppImage** from the newest
+   `builder-…` release on the [Releases](https://github.com/jlaws11/emerald-3ds-onescreen/releases) page.
+2. If you already play Emerald 3DS, back up `emerald3ds.sav` and the `emerald3ds.clock` files from
+   Azahar's `sdmc/3ds/emerald3ds/` folder first.
+3. Right-click the AppImage → Properties → Permissions → tick **Is executable** (or add it to Gear Lever),
+   then open it.
+4. Choose your ROM. For **Install to**, choose Azahar's `sdmc` folder. It may say the folder is not a 3DS
+   SD card, which is fine. Press **Install** and wait about 10–15 minutes while it builds the 3D world's data.
+   It works offline; online, it also fetches the optional follower Pokémon sprites.
+5. In Azahar, open `sdmc/3ds/emerald3ds/Emerald3DS.3dsx` with its normal two-screen layout and set up
+   sound as the [official guide](https://emerald-3ds.com/) says. In the game, turn on
+   **OPTIONS → GENERAL → INTERFACE → SINGLE SCREEN**.
+6. Switch Azahar to the **Single Screen** layout (View → Screen Layout). To play from Gaming Mode, add
+   Azahar to Steam (Games → Add a Non-Steam Game). Optionally, put Azahar's **Swap Screens** hotkey on a
+   back button for the rare moment you want the real bottom screen.
+
+From the command line: `./Emerald3DS-Builder-single-screen-x86_64.AppImage build --rom emerald.gba --output folder`.
+
+## Sharing it
+
+- **Share the link to this fork, never a ROM or a data pack.** Everyone makes their own pack from their own
+  cartridge dump with the AppImage. This fork, its releases and the AppImage contain no game data.
+- Emerald 3DS's own code is licensed CC BY-NC-SA 4.0 ([LICENSE-PORT.md](LICENSE-PORT.md)): changes and
+  forks are welcome with credit, under the same licence, and not for profit. This fork keeps all of the
+  original credits.
+- Windows: no Windows build of this fork's builder yet. The AppImage is for Linux and the Steam Deck.
+
+## When the code changes
+
+Every change to the engine needs a new data pack, and so a new recipe, the file that tells the builder
+how to make the pack from a ROM. Making a recipe needs a copy of the ROM once, so it is made privately,
+never on GitHub. Then:
+
+1. A push to `main` builds the new `Emerald3DS.3dsx` (the **Single screen release** workflow) in the same
+   pinned environment as official releases, and publishes it as a `single-screen-…` release.
+2. The recipe for it is made from the build's data and a ROM (`tools/gen_recipe.py`), audited
+   (`tools/release_audit.py --strict --rom`), and committed as `.github/payload/emerald3ds.recipe`.
+   The build's data reaches that step only encrypted to `.github/pack-inputs.pub.pem`.
+3. That commit builds a new **Builder AppImage** with the new engine and recipe.
+
+Changes to workflows, docs or this README do not rebuild the game. The original project's CI does not
+run for pushes to `main` here: its test step hung for hours on this fork.
+
+## Status and limits
+
+- **Not yet tested in play.** It builds, passes the project's tests that cover the changed code, and the
+  AppImage's pack matches the engine byte for byte. If something looks wrong in a menu or a battle, open
+  an issue on this fork with a screenshot.
+- Made for emulators. It should also run on a real 3DS, but that is untested.
+- English (USA/Europe) Emerald only, like the official release.
+- If the official Emerald 3DS adds or changes things after v0.5.0, this fork does not have them until it
+  is brought up to date.
+
+---
+
 <p align="center">
   <img src="https://i.postimg.cc/XJRQB9cc/logo2.png" alt="Emerald 3DS" width="480">
 </p>

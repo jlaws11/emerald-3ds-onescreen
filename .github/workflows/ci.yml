@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    # This fork's release branch is built by single-screen-release.yml.
-    branches-ignore: [single-screen]
+    # This fork's main is built by single-screen-release.yml; this CI's test
+    # step hung for hours here, so it runs for pull requests and other branches only.
+    branches-ignore: [main, single-screen]
   pull_request:
 
 jobs:

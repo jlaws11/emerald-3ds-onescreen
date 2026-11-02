@@ -10,7 +10,7 @@ name: Builder AppImage
 
 on:
   push:
-    branches: [single-screen]
+    branches: [main]
     paths: ['.github/payload/**', '.github/workflows/builder-appimage.yml', 'builder/**']
 
 permissions:

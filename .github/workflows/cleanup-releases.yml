@@ -4,7 +4,7 @@ name: Clean up releases
 # one tag a line: temporary ones such as the encrypted recipe inputs.
 on:
   push:
-    branches: [single-screen]
+    branches: [main]
     paths: [.github/cleanup-releases.txt]
 
 permissions:

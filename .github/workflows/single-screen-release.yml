@@ -8,9 +8,9 @@ name: Single screen release
 
 on:
   push:
-    branches: [single-screen]
-    # Changes to the workflows alone (housekeeping) do not rebuild the game.
-    paths-ignore: ['.github/**']
+    branches: [main]
+    # Changes to the workflows, the docs or the README alone do not rebuild the game.
+    paths-ignore: ['.github/**', 'docs/**', 'README.md']
   workflow_dispatch:
 
 permissions:
