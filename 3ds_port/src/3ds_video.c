@@ -3722,7 +3722,19 @@ static void DrawBattleText(unsigned bg)
      * middle (numbered one after the cap), the three-tile rows of the menu
      * boxes one cap and then the middle itself. Column 2 tells which, since
      * the message window starts there and never holds the middle tile.
+     *
+     * A menu page (two boxes, right past the cap) has its windows nearer the
+     * left cap: the action prompt from column 1, the move names from column
+     * 2, so columns 1 and 2 are text there, and the move page drew the box's
+     * right edge (its middle + 1) across the stretch. There the middle comes
+     * from the left cap alone, which no window covers: the cap's tile plus
+     * one in a menu box's rows, plus two in a message box's, the style read
+     * from the band's top row, a frame row no window covers either
+     * (CtrVideo_BandMiddle).
      */
+    bool menuPage = right != BATTLE_BAND_CAP;
+    bool twoCaps = MapEntry(map, size, first + 1, ((BATTLE_BAND_TOP + scrollY) >> 3) & (rows - 1))
+                != MapEntry(map, size, first + 2, ((BATTLE_BAND_TOP + scrollY) >> 3) & (rows - 1));
     if (!ClipCell(&x0, &x1, &y0, &y1)) return;
     C2D_Flush();
     Scissor(x0, y0, x1, y1);
@@ -3735,7 +3747,10 @@ static void DrawBattleText(unsigned bg)
         int slot;
 
         if (!cap && !inner) continue;
-        middle = next == inner ? inner : (inner & ~1023u) | ((inner + 1) & 1023);
+        if (menuPage)
+            middle = CtrVideo_BandMiddle((uint16_t)cap, twoCaps);
+        else
+            middle = next == inner ? inner : (inner & ~1023u) | ((inner + 1) & 1023);
         slot = EntrySlot(chars, middle, color256);
         if (slot < 0) continue;
         for (int px = ((x0 + ox) & ~7) - ox; px < x1; px += 8)

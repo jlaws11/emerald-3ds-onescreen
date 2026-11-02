@@ -60,6 +60,11 @@ unsigned CtrVideo_BandSecondBox(const uint16_t *entries, unsigned count, unsigne
     return 0;
 }
 
+uint16_t CtrVideo_BandMiddle(uint16_t cap, bool twoCaps)
+{
+    return (uint16_t)((cap & ~1023u) | ((cap + (twoCaps ? 2u : 1u)) & 1023u));
+}
+
 uint32_t CtrVideo_RGBA8(uint16_t color, bool opaque)
 {
     unsigned r = color & 31, g = (color >> 5) & 31, b = (color >> 10) & 31;

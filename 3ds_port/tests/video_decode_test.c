@@ -93,6 +93,24 @@ int main(void)
         assert(CtrVideo_BandSecondBox(action, 30, 2) == 15);
         assert(CtrVideo_BandSecondBox(moves, 30, 2) == 19);
         assert(CtrVideo_BandSecondBox(empty, 30, 2) == 0);
+
+        /* The stretched middle of each row, from its left cap: the message
+         * style (two caps, top row 004 then 005) on the action page, the
+         * menu style (one, 013 twice) on the move page - whose columns 1-2
+         * hold move names, so they cannot tell. textbox_map.bin rows 34-39
+         * and 54-59: caps 003/008/00D and 012/015/018. */
+        bool actionTwo = action[1] != action[2], movesTwo = moves[1] != moves[2];
+
+        assert(actionTwo && !movesTwo);
+        assert(CtrVideo_BandMiddle(0x0003, actionTwo) == 0x0005);
+        assert(CtrVideo_BandMiddle(0x0008, actionTwo) == 0x000a);
+        assert(CtrVideo_BandMiddle(0x000d, actionTwo) == 0x000f);
+        assert(CtrVideo_BandMiddle(0x1012, movesTwo) == 0x1013);
+        assert(CtrVideo_BandMiddle(0x1015, movesTwo) == 0x1016);
+        assert(CtrVideo_BandMiddle(0x1018, movesTwo) == 0x1019);
+        /* Flip bits and the palette stay; the tile wraps within its 10 bits. */
+        assert(CtrVideo_BandMiddle(0x1c15, false) == 0x1c16);
+        assert(CtrVideo_BandMiddle(0x03ff, false) == 0x0000);
     }
     puts("PASS video decode: 32768 colours, full atlas, BG/OBJ addressing, affine sign, screen to texels, "
          "battle box pages");

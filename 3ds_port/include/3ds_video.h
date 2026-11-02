@@ -367,6 +367,13 @@ void CtrVideo_ScreenToTexels(uint16_t *texels, unsigned texWidth, const uint16_t
  * 3ds_video.c's BattleBandRight lays the game's menu pages out by it.
  */
 unsigned CtrVideo_BandSecondBox(const uint16_t *entries, unsigned count, unsigned capColumns);
+/*
+ * A box row's middle tile from its left cap (a tilemap entry): the next
+ * tile in a menu box's frame (one cap tile), the one after in a message
+ * box's (two). Palette and flip bits kept. textbox_map.bin numbers each row
+ * of a frame one after the other.
+ */
+uint16_t CtrVideo_BandMiddle(uint16_t cap, bool twoCaps);
 uint32_t CtrVideo_RGBA8(uint16_t color, bool opaque);
 uint16_t CtrVideo_RGBA5551(uint16_t color);
 unsigned CtrVideo_ObjTile(unsigned base, unsigned x, unsigned y,
